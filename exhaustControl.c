@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
+#include <limits.h>
 #include "ABE_ADCDACPi.h"
 
 #define DEVICE_ADDR  0x10
@@ -27,13 +28,170 @@
 #define LedPin    0
 #define ButtonPin 1
 
-typedef struct Queued_Float QueuedFloat;
-
-struct Queued_Float
-{
-    int          value;
-    QueuedFloat *nextFloat;
+struct queue {
+	unsigned int tail;	    // current tail
+	unsigned int head;	    // current head
+	unsigned int size;	    // current number of items
+	unsigned int capacity;      // Capacity of queue
+	float* data; 		    // Pointer to array of data
 };
+
+// Create Global defenition of queue_t
+typedef struct queue queue_t;
+
+// NAME 	: create_queue()
+// INPUT 	: _capacity : capacity of circular queue
+// OUTPUT 	: NULL on failure.
+// 		  pointer to created circular queue (queue_t*)
+// DESCRIPTION	: determine if queue is empty
+queue_t* create_queue(unsigned int _capacity){
+
+	queue_t* myQueue = (queue_t*)malloc(sizeof(queue_t)); // allocate memory of size of queue struct
+
+	if (myQueue == NULL ){
+		return NULL; // if malloc was unsuccesful return NULL
+	} else {
+		// populate the variables of the queue :
+		myQueue->tail = -1;
+		myQueue->head = 0;
+		myQueue->size = 0;
+		myQueue->capacity = _capacity;
+		myQueue->data = (float*)malloc(_capacity * sizeof(float)); // allocate memory for the array
+
+		return myQueue;
+	}
+}
+
+// NAME 	: queue_empty()
+// INPUT 	: q : pointer to circular queue (queue_t*).
+// OUTPUT 	: -1 if q is NULL
+// 		  1 if q is empty
+// 		  0 if q is not empty
+// DESCRIPTION	: determine if queue is empty
+
+int queue_empty(queue_t* q){
+		if (q == NULL){
+			return -1;
+		}else if(q->size == 0) {
+			return 1;
+		}else {
+			return 0;
+		}
+}
+
+// NAME 	: queue_full()
+// INPUT 	: q : pointer to circular queue (queue_t*).
+// OUTPUT 	: -1 if q is NULL
+// 		  1 if q is full
+// 		  0 if q is not full
+// DESCRIPTION	: determine if queue is full
+int queue_full(queue_t* q){
+	if (q == NULL){
+		return -1;
+	}else if(q->size == q->capacity){
+		return 1;
+	}else{
+		return 0;
+	}
+}
+
+// NAME 	:	queue_enqueue()
+// INPUT 	: q : pointer to circular queue (queue_t*)
+// 		  item : integer to be added to queue
+// OUTPUT 	: -1 if q is NULL
+// 		  1 if item was added successfully
+// 		  0 otherwise
+// DESCRIPTION	: Enqueue item into circular queue q.
+int queue_enqueue(queue_t* q, float item){
+
+		if (q == NULL){
+			return -1;
+		}	else if (queue_full(q) == 1){
+			// make sure the queue isnt full.
+			return 0;
+		} else {
+		// first we move the tail (insert) location up one (in the circle (size related to _capacity))
+		q->tail = (q->tail + 1) % q->capacity; // this makes it go around in a circle
+		// now we can add the actual item to the location
+		q->data[q->tail] = item;
+		// now we have to increase the size.
+		q->size++;
+		return 1;
+		}
+}
+
+// NAME 	: queue_enqueue()
+// INPUT 	: q : pointer to circular queue (queue_t*)
+// OUTPUT 	: -1 if q is NULL
+// 		  0 if q is Empty
+//		  else returns value of item at front of line.
+// DESCRIPTION	: Dequeue circular queue q, returning next value.
+// Note : we are ASSUMING all values in q are greater than zero.
+int queue_dequeue(queue_t *q){
+
+		if (q == NULL){
+			return -1;
+
+		}	else if (queue_empty(q) == 1){
+			return 0;
+		}else{
+			// firt capture the item
+			 float item = q->data[q->head];
+			 q->head = (q->head + 1) % q->capacity;
+			 // decrease size by 1
+			 q->size--;
+
+			 return item;
+		}
+	}
+
+// NAME 	: queue_size()
+// INPUT 	: q : pointer to circular queue (queue_t*).
+// OUTPUT 	: -1 if q is NULL
+// 		  else return current size of circular queue q.
+// DESCRIPTION	: determine size of queue q.
+unsigned int queue_size(queue_t* q){
+	if (q == NULL){
+		return - 1;
+	} else {
+		return q->size;
+	}
+}
+
+// NAME 	: free_queue()
+// INPUT 	: q : pointer to circular queue (queue_t*).
+// OUTPUT 	: NONE
+// DESCRIPTION	: free memory associatioed with circular queue q
+void free_queue(queue_t* q){
+			// free the array
+			free(q->data);
+			// free queue
+			free(q);
+}
+
+void print_queue(queue_t* q){
+	for(int i=0; i < q->capacity; i++){
+		printf("[%f] ", q->data[i]);
+	}
+	printf("\n");
+}
+
+bool allLow(queue_t* q){
+	for(int i = 0; i<q->capacity; i++) {
+		if(q->data[i] == HIGH) {
+			return false;
+		}
+	}
+	return true;
+}
+
+float queue_average(queue_t* q){
+	float dataSum = 0.0;
+	for(int i = 0; i<q->capacity; i++) {
+		dataSum += q->data[i];
+	}
+	return dataSum/q->capacity;
+}
 
 void openValve(int fd) {
 	wiringPiI2CWriteReg8(fd, 1, ON);
@@ -47,182 +205,6 @@ void closeValve(int fd) {
 	sleep(1);
 	wiringPiI2CWriteReg8(fd, 2, OFF);
 	return;
-}
-
-
-int add_float_to_queue(float newValue, QueuedFloat **lastFloat)
-{
-    QueuedFloat *newQueuedFloat;
-
-    // Create a new action in memory
-    if ((newQueuedFloat = (QueuedAction *)malloc(sizeof(QueuedAction))) == NULL)
-        return 0;
-
-    // Make the old 'lastAction' point to the new Action, 
-    // and the new Action to point to NULL:
-    *lastAction -> nextAction = newQueuedAction;
-    newQueuedAction -> nextAction = NULL;
-    newQueuedAction -> action = newAction;
-    newQueuedAction -> value = newValue;
-
-    // Designate the new Action as the new lastAction:
-    *lastAction = newQueuedAction;
-    return 1;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Data structure to represent a stack
-struct floatStack {
-    int maxsize;    // define max capacity of the stack
-    int top;
-    float *items;
-};
-
-// Data structure to represent a stack
-struct intStack {
-    int maxsize;    // define max capacity of the stack
-    int top;
-    int *items;
-};
-
-
-
-// Utility function to initialize the stack
-struct floatStack* newFloatStack(int capacity) {
-    struct floatStack *pt = (struct floatStack*)malloc(sizeof(struct floatStack));
- 
-    pt->maxsize = capacity;
-    pt->top = -1;
-    pt->items = (float*)malloc(sizeof(float) * capacity);
- 
-    return pt;
-}
-
-// Utility function to initialize the stack
-struct intStack* newIntStack(int capacity) {
-    struct intStack *pt = (struct intStack*)malloc(sizeof(struct intStack));
- 
-    pt->maxsize = capacity;
-    pt->top = -1;
-    pt->items = (int*)malloc(sizeof(int) * capacity);
- 
-    return pt;
-}
-
-// Utility function to return the size of the stack
-int intSize(struct intStack *pt) {
-    return pt->top + 1;
-}
-
-// Utility function to return the size of the stack
-int floatSize(struct floatStack *pt) {
-    return pt->top + 1;
-}
-
-float floatStructAvg(struct floatStack *pt) {
-	float sum = 0.0;
-	for(int i=0; i<pt->maxsize; i++) {
-		sum += pt->items[i];
-	}
-	return sum/pt->maxsize;
-}
-
-bool allLow(struct intStack *pt) {
-
-	for(int i=0; i<pt->maxsize; i++) {
-		printf("[%d] ", pt->items[i]);
-		if(pt->items[i] == HIGH) {
-		//	return false;
-		}
-	}
-	printf("\n");	//return true;
-	return false;
-}
-
-// Utility function to check if the stack is empty or not
-int floatIsEmpty(struct floatStack *pt) {
-    return pt->top == -1;                   // or return size(pt) == 0;
-}
-
-// Utility function to check if the stack is empty or not
-int intIsEmpty(struct intStack *pt) {
-    return pt->top == -1;                   // or return size(pt) == 0;
-}
-
-
-// Utility function to check if the stack is full or not
-int floatIsFull(struct floatStack *pt) {
-    return pt->top == pt->maxsize - 1;      // or return size(pt) == pt->maxsize;
-}
-
-// Utility function to check if the stack is full or not
-int intIsFull(struct intStack *pt) {
-    return pt->top == pt->maxsize - 1;      // or return size(pt) == pt->maxsize;
-}
-
-
-// Utility function to add an element `x` to the stack
-void floatPush(struct floatStack *pt, float x) {
-    // check if the stack is already full. Then inserting an element would
-    // lead to stack overflow
-    if (floatIsFull(pt)) {
-        printf("Overflow\nProgram Terminated\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // add an element and increment the top's index
-    pt->items[++pt->top] = x;
-}
-
-// Utility function to add an element `x` to the stack
-void intPush(struct intStack *pt, int x) {
-    // check if the stack is already full. Then inserting an element would
-    // lead to stack overflow
-    if (intIsFull(pt)) {
-        printf("Overflow\nProgram Terminated\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // add an element and increment the top's index
-    pt->items[++pt->top] = x;
-}
-
-// Utility function to pop a top element from the stack
-float floatPop(struct floatStack *pt) {
-    // check for stack underflow
-    if (floatIsEmpty(pt)) {
-        printf("Underflow\nProgram Terminated\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // decrement stack size by 1 and (optionally) return the popped element
-    return pt->items[pt->top--];
-}
-
-// Utility function to pop a top element from the stack
-int intPop(struct intStack *pt) {
-    // check for stack underflow
-    if (intIsEmpty(pt)) {
-        printf("Underflow\nProgram Terminated\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // decrement stack size by 1 and (optionally) return the popped element
-    int item = pt->items[0];
-    pt->items[0] = pt->items[1];
-    pt->top--;
-    return item;
 }
 
 int main(void) {
@@ -249,22 +231,23 @@ int main(void) {
 	pinMode(ButtonPin, INPUT);
 	pullUpDnControl(ButtonPin, PUD_UP);
 
-	struct floatStack *tpsVals = newFloatStack(60);
-	struct intStack *buttonVals = newIntStack(20);
-	
+	struct queue* buttonQueue = create_queue(20);
+	struct queue* tpsQueue = create_queue(60);
+
 	closeValve(fd); //Close the valve on start to get to a known state
 	while(1) {
-		if(floatIsFull(tpsVals)) {
-			floatPop(tpsVals);
-			tpsAvg = floatStructAvg(tpsVals);
+		if(queue_full(tpsQueue)) {
+			queue_dequeue(tpsQueue);
 		}	
-		floatPush(tpsVals, read_adc_voltage(1, 0));
-		if(intIsFull(buttonVals)) {
-			intPop(buttonVals);
+		queue_enqueue(tpsQueue, read_adc_voltage(1, 0));
+		if(queue_full(tpsQueue)) {
+			tpsAvg = queue_average(tpsQueue);
 		}
-		intPush(buttonVals, digitalRead(ButtonPin));
-		
-		if(allLow(buttonVals)){
+		if(queue_full(buttonQueue)) {
+			queue_dequeue(buttonQueue);
+		}
+		queue_enqueue(buttonQueue, digitalRead(ButtonPin));
+		if(allLow(buttonQueue)){
 	        	if(isOpen) {
 				closeValve(fd);
 				isOpen=false;
