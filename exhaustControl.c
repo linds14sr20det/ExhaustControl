@@ -15,6 +15,7 @@
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
 #include <limits.h>
+#include <time.h>
 #include "ABE_ADCDACPi.h"
 
 #define DEVICE_ADDR  0x10
@@ -224,6 +225,10 @@ int main(void) {
 	tpsAvg = 0.0;
 	bool isOpen;
 	isOpen = false;
+	bool pullTimerStarted;
+	pullTimerStarted = false;
+	time_t timerStartTime, timerEndTime;
+	double timeDiff;
 	bool manualOperation;
 	manualOperation = false;
 	int tpsThreshold;
@@ -261,9 +266,18 @@ int main(void) {
 		if(tpsAvg > tpsThreshold && !manualOperation && !isOpen) {
 			openValve(fd);
 			isOpen=true;
+			if (!pullTimerStarted) {
+				pullTimerStarted = true;
+				time(&timerStartTime);
+			}
 		} else if (tpsAvg <= tpsThreshold && !manualOperation && isOpen) {
-			closeValve(fd);
-			isOpen=false;
+			time(&timerEndTime);
+			timeDiff = difftime(timerEndTime, timerStartTime);
+			if (timeDiff > 3.0) {
+				pullTimerStarted = false;
+				closeValve(fd);
+				isOpen=false;
+			}
 		}
 	}
 	return 0;
