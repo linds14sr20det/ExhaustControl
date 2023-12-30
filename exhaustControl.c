@@ -26,8 +26,6 @@
 #define ON      0xFF
 #define OFF     0x00
 
-#define LedPin    0
-#define ButtonPin 1
 
 struct queue {
 	unsigned int tail;	    // current tail
@@ -229,14 +227,9 @@ int main(void) {
 	pullTimerStarted = false;
 	time_t timerStartTime, timerEndTime;
 	double timeDiff;
-	bool manualOperation;
-	manualOperation = false;
 	int tpsThreshold;
-	tpsThreshold = 2.8;
-	pinMode(ButtonPin, INPUT);
-	pullUpDnControl(ButtonPin, PUD_UP);
+	tpsThreshold = 1.5;
 
-	struct queue* buttonQueue = create_queue(20);
 	struct queue* tpsQueue = create_queue(60);
 
 	closeValve(fd); //Close the valve on start to get to a known state
@@ -248,29 +241,14 @@ int main(void) {
 		if(queue_full(tpsQueue)) {
 			tpsAvg = queue_average(tpsQueue);
 		}
-		if(queue_full(buttonQueue)) {
-			queue_dequeue(buttonQueue);
-		}
-		queue_enqueue(buttonQueue, digitalRead(ButtonPin));
-		if(allLow(buttonQueue)){
-	        	if(isOpen) {
-				closeValve(fd);
-				isOpen=false;
-				manualOperation = false;
-			} else {
-				openValve(fd);
-				isOpen=true;
-				manualOperation=true;
-			}
-	       	}
-		if(tpsAvg > tpsThreshold && !manualOperation && !isOpen) {
+		if(tpsAvg > tpsThreshold && !isOpen) {
 			openValve(fd);
 			isOpen=true;
 			if (!pullTimerStarted) {
 				pullTimerStarted = true;
 				time(&timerStartTime);
 			}
-		} else if (tpsAvg <= tpsThreshold && !manualOperation && isOpen) {
+		} else if (tpsAvg <= tpsThreshold && isOpen) {
 			time(&timerEndTime);
 			timeDiff = difftime(timerEndTime, timerStartTime);
 			if (timeDiff > 3.0) {
