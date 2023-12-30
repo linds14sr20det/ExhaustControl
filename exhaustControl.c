@@ -193,16 +193,16 @@ float queue_average(queue_t* q){
 }
 
 void openValve(int fd) {
-	wiringPiI2CWriteReg8(fd, 1, ON);
+	wiringPiI2CWriteReg8(fd, 3, ON);
 	sleep(1);
-	wiringPiI2CWriteReg8(fd, 1, OFF);
+	wiringPiI2CWriteReg8(fd, 3, OFF);
 	return;
 }
 
 void closeValve(int fd) {
-	wiringPiI2CWriteReg8(fd, 2, ON);
+	wiringPiI2CWriteReg8(fd, 4, ON);
 	sleep(1);
-	wiringPiI2CWriteReg8(fd, 2, OFF);
+	wiringPiI2CWriteReg8(fd, 4, OFF);
 	return;
 }
 
