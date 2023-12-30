@@ -237,7 +237,7 @@ int main(void) {
 		if(queue_full(tpsQueue)) {
 			queue_dequeue(tpsQueue);
 		}	
-		queue_enqueue(tpsQueue, read_adc_voltage(1, 0));
+		queue_enqueue(tpsQueue, read_adc_voltage(2, 0));
 		if(queue_full(tpsQueue)) {
 			tpsAvg = queue_average(tpsQueue);
 		}
